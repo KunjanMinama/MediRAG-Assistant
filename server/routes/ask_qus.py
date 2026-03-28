@@ -20,15 +20,15 @@ async def ask_question(question:str=Form(...)):
         logger.info(f"user query:{question}")
 
         #embed model + pinecone setup
-        pc=Pinecone(api_key=os.environ("PINECONE_API_KEY"))
-        index = pc.Index(os.environ("PINECONE_INDEX_NAME"))
-        embed_model=HuggingFaceEmbeddings(model="sentence-transformers/all-mpnet-base-v2")
+        pc=Pinecone(api_key=os.environ["PINECONE_API_KEY"])
+        index = pc.Index(os.environ["PINECONE_INDEX_NAME"])
+        embed_model=HuggingFaceEmbeddings(model_name="BAAI/bge-small-en")
         embedded_query=embed_model.embed_query(question)
         res=index.query(vector=embedded_query,top_k=3,include_metadata=True)
         
         docs=[
             Document(
-                page_content=match["metadata"].get("text",""),\
+                page_content=match["metadata"].get("text",""),
                 metadata=match["metadata"]
 
             ) for match in res["matches"]
@@ -37,14 +37,13 @@ async def ask_question(question:str=Form(...)):
             tags: Optional[List[str]]= Field(default_factory=list)
             metadata: Optional[dict]= Field(default_factory=dict)
 
-            def __init__(self, documents: List[Document]):
-                super().__init__()
-                self.docs = documents
             
+            docs: List[Document] = Field(default_factory=list)  # ✅ declare it as a field
+
             def _get_relevant_documents(self, query: str) -> List[Document]:
-                return self.docs
+                 return self.docs
             
-        retriever = SimpleRetriever(docs)
+        retriever = SimpleRetriever(docs=docs)
         chain=get_llm_chain(retriever)
         result=query_chain(chain,question)
 
