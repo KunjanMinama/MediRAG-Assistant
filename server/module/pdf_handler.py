@@ -1,5 +1,5 @@
 import os
-import shutill
+import shutil
 from fastapi import UploadFile
 import tempfile
 
@@ -11,7 +11,7 @@ def save_uploaded_files(files:list[UploadFile])-> list[str]:
     for file in files:
         temp_path=os.path.join(UPLOAD_DIR,file.filename)
         with open(temp_path,"wb") as f:
-            shutill.copyfileobj(file.file,f)
+            shutil.copyfileobj(file.file,f)
         file_path.append(temp_path)
 
     return file_path
