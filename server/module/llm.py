@@ -16,7 +16,9 @@ def get_llm_chain(retriever):
     llm = HuggingFaceEndpoint(
         repo_id="meta-llama/Llama-3.1-8B-Instruct",
         task="chat-completion",
-        max_tokens=256)
+        max_new_tokens=256,
+        huggingfacehub_api_token=os.getenv("HUGGINGFACE_API_TOKEN")
+        )
 
     # Pass llm to ChatHuggingFace
     model = ChatHuggingFace(llm=llm)
