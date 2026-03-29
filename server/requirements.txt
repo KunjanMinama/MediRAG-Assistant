@@ -1,0 +1,40 @@
+#web framework
+fastapi
+uvicorn[standard]
+python-multipart # for file upload
+
+# LangChain & EcoSystem
+langchain 
+langchain-community
+langchain-core
+langchain-groq
+
+# Vectorstore
+# Crhromadb
+pinecone
+
+#Embeddings
+# sentense-transformers
+# langchain-huggingface
+langchain-huggingface
+
+# Environment variables
+python-dotenv
+
+#PDF parsing
+PyPDF # backend for PyPDFLoader via langchain_community
+
+# Typing & Utilities
+pydantic
+requests
+tqdm
+
+# Logging
+loguru
+
+# File Uplaod
+aiofiles
+
+# Frontend UI
+streamlit
+
