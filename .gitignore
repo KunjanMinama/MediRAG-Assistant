@@ -1,5 +1,7 @@
-venv/
-.venv/
-__pycache__/
+venv
+.venv
+client/__pycache__
+server/__pycache__
+test.py
 *.env
 *.pyc

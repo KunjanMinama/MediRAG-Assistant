@@ -30,6 +30,9 @@ def get_llm_chain(retriever):
         and health-related questions.
 
         Your job is to provide clear, accurate, and helpful responses based **only on the provided context**
+
+        If the answer exists anywhere in the context, you MUST provide it.
+        Do not say you cannot find it if the information is present.
         
         ---
 
@@ -51,7 +54,8 @@ def get_llm_chain(retriever):
         )
     
     rag_chain = (
-        {"context": retriever, "question": RunnablePassthrough()}
+        {"context": retriever | (lambda docs: "\n\n".join([d.page_content for d in docs])), 
+         "question": RunnablePassthrough()}
         | prompt
         | model
     )

@@ -63,7 +63,7 @@ def load_vectorstore(uploaded_files):
     )
              for i, page in enumerate(reader.pages)
 ]
-        splitter=RecursiveCharacterTextSplitter(chunk_size=500,chunk_overlap=100)
+        splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
         chunks=splitter.split_documents(document)
         
         texts=[chunk.page_content for chunk in chunks]
@@ -77,11 +77,15 @@ def load_vectorstore(uploaded_files):
         # 4. Upsert
         # 4. Upsert
         print("Upserting embeddings...")
+        # ✅ include text in metadata
         vectors = [
-                 {"id": ids[i], "values": embedding[i], "metadata": metadata[i]}
-                for i in range(len(embedding))
+              {
+                 "id": ids[i],
+                 "values": embedding[i],
+                 "metadata": {**metadata[i], "text": texts[i]}  # ✅ add text here
+          }
+             for i in range(len(embedding))
         ]
-
         with tqdm(total=len(vectors), desc="Upserting to Pinecone") as progress:
             for v in vectors:
                 index.upsert(vectors=[v])
