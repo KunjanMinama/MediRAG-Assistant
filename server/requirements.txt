@@ -21,6 +21,9 @@ langchain-huggingface
 # Environment variables
 python-dotenv
 
+#sentence transformer
+sentence-transformers
+
 #PDF parsing
 PyPDF # backend for PyPDFLoader via langchain_community
 
