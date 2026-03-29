@@ -143,7 +143,7 @@ st.markdown("""
         color: white !important;
     }
 
-    /* ── Scrollbar ── */
+    /* ── Scrollbar ── */ 
     ::-webkit-scrollbar { width: 6px; }
     ::-webkit-scrollbar-track { background: #0e1117; }
     ::-webkit-scrollbar-thumb { background: #2a4a6e; border-radius: 4px; }
