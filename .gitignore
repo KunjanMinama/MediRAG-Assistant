@@ -1,7 +1,6 @@
 venv
 .venv
-client/__pycache__
-server/__pycache__
+__pycache__
 test.py
 *.env
 *.pyc
