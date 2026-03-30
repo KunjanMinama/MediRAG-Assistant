@@ -22,7 +22,7 @@ async def ask_question(question:str=Form(...)):
         #embed model + pinecone setup
         pc=Pinecone(api_key=os.environ["PINECONE_API_KEY"])
         index = pc.Index(os.environ["PINECONE_INDEX_NAME"])
-        embed_model=HuggingFaceEmbeddings(model_name="BAAI/bge-small-en")
+        embed_model=HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-MiniLM-L3-v2")
         embedded_query=embed_model.embed_query(question)
         res=index.query(vector=embedded_query,top_k=8,include_metadata=True)
         
