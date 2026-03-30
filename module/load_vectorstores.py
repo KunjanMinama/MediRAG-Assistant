@@ -4,6 +4,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
 from pinecone import Pinecone, ServerlessSpec
+
 from pypdf import PdfReader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -42,7 +43,9 @@ index=pc.Index(PINECONE_INDEX_NAME)
 ## Load,split,embeed and upsert pdf docs content
 
 def load_vectorstore(uploaded_files):
-    embed_model=HuggingFaceEmbeddings(model_name="BAAI/bge-small-en")
+    embed_model=HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-MiniLM-L3-v2"
+                                      )
     file_paths=[]
     
     # 1. upload
@@ -63,7 +66,7 @@ def load_vectorstore(uploaded_files):
     )
              for i, page in enumerate(reader.pages)
 ]
-        splitter=RecursiveCharacterTextSplitter(chunk_size=500,chunk_overlap=100)
+        splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
         chunks=splitter.split_documents(document)
         
         texts=[chunk.page_content for chunk in chunks]
