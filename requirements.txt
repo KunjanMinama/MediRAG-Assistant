@@ -17,6 +17,7 @@ pinecone
 # sentense-transformers
 # langchain-huggingface
 langchain-huggingface
+sentence-transformers==2.7.0
 
 # Environment variables
 python-dotenv
