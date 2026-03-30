@@ -18,13 +18,11 @@ pinecone
 # langchain-huggingface
 langchain-huggingface
 
-<<<<<<< HEAD
-
-
-=======
->>>>>>> 5ec11c194ac62734209998bcc1da58a70ce01581
 # Environment variables
 python-dotenv
+
+#sentence transformer
+sentence-transformers
 
 #PDF parsing
 PyPDF # backend for PyPDFLoader via langchain_community
