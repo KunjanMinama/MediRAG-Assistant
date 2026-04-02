@@ -4,11 +4,13 @@ from pathlib import Path
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
 from pinecone import Pinecone, ServerlessSpec
-
+from pinecone_text.sparse import BM25Encoder
+from module.bm25_encoder import encode_documents, fit_and_save_bm25
 from pypdf import PdfReader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
+from logger import logger
 
 load_dotenv()
 
@@ -31,7 +33,7 @@ if PINECONE_INDEX_NAME not in existing_indexes:
     pc.create_index(
         name=PINECONE_INDEX_NAME,
         dimension=384,
-        metric="cosine",
+        metric="dotproduct",
         spec=spec
 
     )
@@ -47,6 +49,8 @@ def load_vectorstore(uploaded_files):
         model_name="sentence-transformers/paraphrase-MiniLM-L3-v2"
                                       )
     file_paths=[]
+    logger.info("Pinecone index ready, starting to process uploaded files")
+
     
     # 1. upload
     for file in uploaded_files:
@@ -54,10 +58,17 @@ def load_vectorstore(uploaded_files):
         with open(save_path,"wb") as f: 
             f.write(file.file.read())
         file_paths.append(str(save_path))
+        logger.info(f"Saved file: {save_path}")
+
+    all_chunks=[]
+    all_texts=[]
+    all_ids=[]
+    all_metadata=[]
 
     #2. split
     for file_path in file_paths:
-        # ✅ Replace with
+        logger.info(f"Processing: {file_path}")
+
         reader = PdfReader(file_path)
         document = [
              Document(
@@ -69,30 +80,47 @@ def load_vectorstore(uploaded_files):
         splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
         chunks=splitter.split_documents(document)
         
-        texts=[chunk.page_content for chunk in chunks]
-        metadata = [chunk.metadata for chunk in chunks]
-        ids=[f"{Path(file_path).stem}-{i}" for i in range(len(chunks))]
+         # Collect texts, ids, metadata
+        for i, chunk in enumerate(chunks):
+            chunk_id = f"{Path(file_path).stem}-{i}"
+            all_chunks.append(chunk)
+            all_texts.append(chunk.page_content)
+            all_ids.append(chunk_id)
+            all_metadata.append({
+                **chunk.metadata,
+                "text": chunk.page_content  # store text for retrieval
+            })
+ 
+    logger.info(f"Total chunks to process: {len(all_chunks)}")
 
-        #3 embedding
-        print(f"Embedding chunks")
-        embedding=embed_model.embed_documents(texts)
+    # Generate dense embeddings ────────────────────────────────────
+    logger.info("Generating dense embeddings...")
+    dense_embeddings = embed_model.embed_documents(all_texts)
+    logger.info(f"Dense embeddings generated: {len(dense_embeddings)}")
 
-        # 4. Upsert
-        # 4. Upsert
-        print("Upserting embeddings...")
-        # ✅ include text in metadata
-        vectors = [
-              {
-                 "id": ids[i],
-                 "values": embedding[i],
-                 "metadata": {**metadata[i], "text": texts[i]}  # ✅ add text here
-          }
-             for i in range(len(embedding))
-        ]
-        with tqdm(total=len(vectors), desc="Upserting to Pinecone") as progress:
-            for v in vectors:
-                index.upsert(vectors=[v])
-                progress.update(1)
-
-        print(f"Upload complete for {file_path}")
-                         
+    #  Fit BM25 and generate sparse vectors ─────────────────────────
+    # NEW: fit BM25 on ALL texts so it learns the vocabulary
+    logger.info("Fitting BM25 and generating sparse vectors...")
+    bm25           = fit_and_save_bm25(all_texts)  # learns vocab + IDF scores
+    sparse_vectors = encode_documents(bm25, all_texts)  # learns vocab + IDF, returns sparse vectors
+    logger.info(f"Sparse vectors generated: {len(sparse_vectors)}")
+ 
+    # Upsert to Pinecone with BOTH dense + sparse ──────────────────
+    logger.info("Upserting to Pinecone with hybrid vectors...")
+ 
+    vectors = [
+        {
+            "id":           all_ids[i],
+            "values":       dense_embeddings[i],      # dense vector
+            "sparse_values": sparse_vectors[i],        # sparse vector ← NEW
+            "metadata":     all_metadata[i]
+        }
+        for i in range(len(all_chunks))
+    ]
+ 
+    with tqdm(total=len(vectors), desc="Upserting to Pinecone") as progress:
+        for v in vectors:
+            index.upsert(vectors=[v])
+            progress.update(1)
+ 
+    logger.info(f"Upload complete! {len(vectors)} vectors upserted.")
