@@ -3,6 +3,8 @@ from typing import List, Optional
 from module.llm import get_llm_chain
 from module.quer_handler import query_chain
 from module.bm25_encoder import load_bm25, encode_query
+from module.reranker import Reranker
+from module.multidoc_chain import run_multidoc_chain, needs_multidoc_reasoning
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -14,8 +16,10 @@ import os
 
 router = APIRouter()
 
-HYBRID_ALPHA = 0.5  # 0.5 = equal dense + sparse balance
 
+HYBRID_ALPHA = 0.5  # 0.5 = equal dense + sparse balance
+TOP_K = 10
+TOP_N = 5
 
 class SimpleRetriever(BaseRetriever):
     docs: List[Document] = Field(default_factory=list)
@@ -48,7 +52,7 @@ async def ask_question(question: str = Form(...)):
         res = index.query(
             vector=dense_vector,
             sparse_vector=sparse_vector,
-            top_k=8,
+            top_k=TOP_K,
             include_metadata=True,
             alpha=HYBRID_ALPHA
         )
@@ -62,30 +66,68 @@ async def ask_question(question: str = Form(...)):
                 metadata=match["metadata"]
             )
             for match in res["matches"]
+
         ]
 
-        # Log scores for debugging
+         # Log retrieval scores
         for i, match in enumerate(res["matches"]):
             logger.debug(
                 f"Chunk {i+1} | score: {match['score']:.4f} | "
                 f"page: {match['metadata'].get('page', '')}"
             )
 
-        # Step 6: Build chain and run
-        retriever = SimpleRetriever(docs=docs)
-        chain     = get_llm_chain(retriever)
-        result    = query_chain(chain, question)
+        # Step 5.1: Rerank documents
+        logger.debug("Reranking retrieved chunks...")
+        reranker = Reranker(api_key=os.environ["COHERE_API_KEY"])
+        docs_texts=[doc.page_content for doc in docs]
+        reranked = reranker.rerank(question, docs_texts, top_k=TOP_N)
 
-        logger.info("Query successful")
+        #Rebuild Document object from reranked results 
 
-        return {
-            "response":         result["response"],
-            "original_query":   result.get("original_query", question),
-            "rewritten_query":  result.get("rewritten_query", question),
-            "chunks_retrieved": len(docs),
-            "hybrid_alpha":     HYBRID_ALPHA
-        }
+        # Preserve original metadata including source
+        reranked_docs = []
+        for r in reranked:
+            original_doc = next(
+                 (doc for doc in docs if doc.page_content == r["text"]),
+                 None
+            )
+            reranked_docs.append(
+                 Document(
+                     page_content=r["text"],
+                     metadata={
+                       **(original_doc.metadata if original_doc else {}),
+                        "rerank_score": r["score"]
+            }
+        )
+    )
+        logger.info(f"Reranker selected {len(reranked_docs)} Chunks. ")
 
+        ##Step 6: Decide reasoning type
+        #if chunk come  from the multiple documents -> MAP-Resuce
+        #if chunk come from the single document -> simple RAG
+        if needs_multidoc_reasoning(reranked_docs):
+            logger.info("Multiple sources detected - using MAP-Reduce chain")
+
+            result=run_multidoc_chain(reranked_docs, question)
+
+            return {
+                "response":         result["response"],
+                
+            }
+ 
+        else:
+            logger.info("Single source detected — using simple RAG chain")
+
+            #Simple RAG pipeline
+            retriever = SimpleRetriever(docs=reranked_docs)  
+            chain = get_llm_chain(retriever)
+            result = query_chain(chain, question)
+
+            return {
+                "response":         result["response"],
+               
+              }
+ 
     except FileNotFoundError as e:
         logger.warning(f"BM25 not found: {e}")
         return JSONResponse(
@@ -94,4 +136,7 @@ async def ask_question(question: str = Form(...)):
         )
     except Exception as e:
         logger.exception("Error processing question")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
