@@ -6,8 +6,8 @@ def query_chain(chain,user_input:str):
         result=chain.invoke(user_input)
         response={
             "response": result.content,
-            "original_query": result.get(user_input),
-            "rewritten_query": result.get (user_input)
+            "original_query": user_input,
+            "rewritten_query": user_input
         }
         logger.debug(f"Chain response:{response}")
         return response

@@ -4,6 +4,7 @@ from module.llm import get_llm_chain
 from module.quer_handler import query_chain
 from module.bm25_encoder import load_bm25, encode_query
 from module.reranker import Reranker
+from module.multidoc_chain import run_multidoc_chain, needs_multidoc_reasoning
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -14,10 +15,11 @@ from logger import logger
 import os
 
 router = APIRouter()
-reranker = Reranker(api_key="exqG3LMd3pRmzjSeLHTiL0V6B7JIG4CJQRgWSztY")
+
 
 HYBRID_ALPHA = 0.5  # 0.5 = equal dense + sparse balance
-
+TOP_K = 10
+TOP_N = 5
 
 class SimpleRetriever(BaseRetriever):
     docs: List[Document] = Field(default_factory=list)
@@ -50,7 +52,7 @@ async def ask_question(question: str = Form(...)):
         res = index.query(
             vector=dense_vector,
             sparse_vector=sparse_vector,
-            top_k=8,
+            top_k=TOP_K,
             include_metadata=True,
             alpha=HYBRID_ALPHA
         )
@@ -64,59 +66,68 @@ async def ask_question(question: str = Form(...)):
                 metadata=match["metadata"]
             )
             for match in res["matches"]
+
         ]
 
-        # Step 5.1: Rerank documents
-        logger.debug("Reranking retrieved chunks...")
-        retrieved_texts=[doc.page_content for doc in docs]
-
-        reranked = reranker.rerank(
-            query=question,
-            documents= retrieved_texts,
-            top_k=3
-            )
-        # Convert reranker top-3 chunks to final context
-        final_context = "\n\n".join([item["text"] for item in reranked])
-
-        logger.info(f"Reranker selected {len(reranked)}. Top chunks:")
-
-    
-
-        # Log scores for debugging
+         # Log retrieval scores
         for i, match in enumerate(res["matches"]):
             logger.debug(
                 f"Chunk {i+1} | score: {match['score']:.4f} | "
                 f"page: {match['metadata'].get('page', '')}"
             )
 
-      
-        logger.info("Generating answer using final reranked contexts...")
+        # Step 5.1: Rerank documents
+        logger.debug("Reranking retrieved chunks...")
+        reranker = Reranker(api_key=os.environ["COHERE_API_KEY"])
+        docs_texts=[doc.page_content for doc in docs]
+        reranked = reranker.rerank(question, docs_texts, top_k=TOP_N)
 
-        prompt= f"""
-        You are medical expert. Answer the question based on the following context:
+        #Rebuild Document object from reranked results 
 
-        context:
-        {final_context}
-        question:
-        {question}  
-        """
-         
-        llm_chain=get_llm_chain(retriever=None) 
-        answer=llm_chain.invoke({
-            "context": final_context,
-            "question": question
-        })
-        
+        # Preserve original metadata including source
+        reranked_docs = []
+        for r in reranked:
+            original_doc = next(
+                 (doc for doc in docs if doc.page_content == r["text"]),
+                 None
+            )
+            reranked_docs.append(
+                 Document(
+                     page_content=r["text"],
+                     metadata={
+                       **(original_doc.metadata if original_doc else {}),
+                        "rerank_score": r["score"]
+            }
+        )
+    )
+        logger.info(f"Reranker selected {len(reranked_docs)} Chunks. ")
 
-        logger.info("Query successful")
+        ##Step 6: Decide reasoning type
+        #if chunk come  from the multiple documents -> MAP-Resuce
+        #if chunk come from the single document -> simple RAG
+        if needs_multidoc_reasoning(reranked_docs):
+            logger.info("Multiple sources detected - using MAP-Reduce chain")
 
-        return {
-            "response":         answer.content,
-          
-        }
-    
-    
+            result=run_multidoc_chain(reranked_docs, question)
 
+            return {
+                "response":         result["response"],
+                
+            }
+ 
+        else:
+            logger.info("Single source detected — using simple RAG chain")
+
+            #Simple RAG pipeline
+            retriever = SimpleRetriever(docs=reranked_docs)  
+            chain = get_llm_chain(retriever)
+            result = query_chain(chain, question)
+
+            return {
+                "response":         result["response"],
+               
+              }
+ 
     except FileNotFoundError as e:
         logger.warning(f"BM25 not found: {e}")
         return JSONResponse(
@@ -125,4 +136,7 @@ async def ask_question(question: str = Form(...)):
         )
     except Exception as e:
         logger.exception("Error processing question")
-        return JSONResponse(status_code=500, content={"error": str(e)})
+        return JSONResponse(
+            status_code=500,
+            content={"error": str(e)}
+        )
