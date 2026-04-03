@@ -3,6 +3,7 @@ from typing import List, Optional
 from module.llm import get_llm_chain
 from module.quer_handler import query_chain
 from module.bm25_encoder import load_bm25, encode_query
+from module.reranker import Reranker
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -13,6 +14,7 @@ from logger import logger
 import os
 
 router = APIRouter()
+reranker = Reranker(api_key="exqG3LMd3pRmzjSeLHTiL0V6B7JIG4CJQRgWSztY")
 
 HYBRID_ALPHA = 0.5  # 0.5 = equal dense + sparse balance
 
@@ -64,6 +66,22 @@ async def ask_question(question: str = Form(...)):
             for match in res["matches"]
         ]
 
+        # Step 5.1: Rerank documents
+        logger.debug("Reranking retrieved chunks...")
+        retrieved_texts=[doc.page_content for doc in docs]
+
+        reranked = reranker.rerank(
+            query=question,
+            documents= retrieved_texts,
+            top_k=3
+            )
+        # Convert reranker top-3 chunks to final context
+        final_context = "\n\n".join([item["text"] for item in reranked])
+
+        logger.info(f"Reranker selected {len(reranked)}. Top chunks:")
+
+    
+
         # Log scores for debugging
         for i, match in enumerate(res["matches"]):
             logger.debug(
@@ -71,20 +89,33 @@ async def ask_question(question: str = Form(...)):
                 f"page: {match['metadata'].get('page', '')}"
             )
 
-        # Step 6: Build chain and run
-        retriever = SimpleRetriever(docs=docs)
-        chain     = get_llm_chain(retriever)
-        result    = query_chain(chain, question)
+      
+        logger.info("Generating answer using final reranked contexts...")
+
+        prompt= f"""
+        You are medical expert. Answer the question based on the following context:
+
+        context:
+        {final_context}
+        question:
+        {question}  
+        """
+         
+        llm_chain=get_llm_chain(retriever=None) 
+        answer=llm_chain.invoke({
+            "context": final_context,
+            "question": question
+        })
+        
 
         logger.info("Query successful")
 
         return {
-            "response":         result["response"],
-            "original_query":   result.get("original_query", question),
-            "rewritten_query":  result.get("rewritten_query", question),
-            "chunks_retrieved": len(docs),
-            "hybrid_alpha":     HYBRID_ALPHA
+            "response":         answer.content,
+          
         }
+    
+    
 
     except FileNotFoundError as e:
         logger.warning(f"BM25 not found: {e}")

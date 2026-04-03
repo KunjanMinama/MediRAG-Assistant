@@ -52,13 +52,34 @@ def get_llm_chain(retriever):
         -do not give medical advise or diagnoses.
         """
         )
-    
+
+    # -------------------------------
+    # CASE 1: No retriever (You are using reranking)
+    # -------------------------------
+    if retriever is None:
+        rag_chain = (
+            {
+                "context": RunnablePassthrough(),
+                "question": RunnablePassthrough(),
+            }
+            | prompt
+            | model
+        )
+        return rag_chain
+
+    # -------------------------------
+    # CASE 2: Normal RAG with retriever
+    # -------------------------------
     rag_chain = (
-        {"context": retriever | (lambda docs: "\n\n".join([d.page_content for d in docs])), 
-         "question": RunnablePassthrough()}
+        {
+            "context": retriever | (lambda docs: "\n\n".join([d.page_content for d in docs])),
+            "question": RunnablePassthrough(),
+        }
         | prompt
         | model
     )
 
     return rag_chain
     
+ 
+

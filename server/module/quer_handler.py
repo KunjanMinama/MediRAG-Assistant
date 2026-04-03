@@ -5,7 +5,9 @@ def query_chain(chain,user_input:str):
         logger.debug(f"Running chian for input: {user_input}")
         result=chain.invoke(user_input)
         response={
-            "response": result.content
+            "response": result.content,
+            "original_query": result.get(user_input),
+            "rewritten_query": result.get (user_input)
         }
         logger.debug(f"Chain response:{response}")
         return response
