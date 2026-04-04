@@ -5,9 +5,21 @@ from middleware.exception_handlers import catch_exception_middleware
 from routes.upload_pdf import router as upload_router
 from routes.ask_qus import router as ask_router
 from routes.evaluate import router as evaluate_router
-
+import logging
+logging.basicConfig(level=logging.INFO)
 
 app=FastAPI(title="Medical AssistantAPI",description="API for AI Assistant Chatbot")
+
+@app.get("/")
+def health_check():
+    return {"status": "running", "message": "MediRAG API is live!"}
+
+@app.on_event("startup")
+async def startup_event():
+    logging.info("FastAPI startup complete!")
+
+
+
 
 # CORS Setup
 app.add_middleware(
@@ -35,10 +47,7 @@ app.include_router(evaluate_router)
 
 
 
-# ✅ Add health check endpoint — Render needs this!
-@app.get("/")
-def health_check():
-    return {"status": "MediRAG API is running!"}
+
 
 # ✅ Add this at the bottom
 if __name__ == "__main__":
