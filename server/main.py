@@ -34,6 +34,13 @@ app.include_router(ask_router)
 app.include_router(evaluate_router)
 
 
+
+# ✅ Add health check endpoint — Render needs this!
+@app.get("/")
+def health_check():
+    return {"status": "MediRAG API is running!"}
+
+# ✅ Add this at the bottom
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=10000)
