@@ -8,16 +8,24 @@ langchain
 langchain-community
 langchain-core
 langchain-groq
+langchain-openai
 
 # Vectorstore
 # Crhromadb
 pinecone
+pinecone-text
+
+sentence-transformers==2.7.0
+openai
+cohere
+ragas
+datasets
+loguru
 
 #Embeddings
 # sentense-transformers
 # langchain-huggingface
 langchain-huggingface
-sentence-transformers==2.7.0
 
 # Environment variables
 python-dotenv
