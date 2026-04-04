@@ -41,7 +41,7 @@ def load_vectorstore(uploaded_files):
             time.sleep(1)
 
     index       = pc.Index(PINECONE_INDEX_NAME)
-    embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/paraphrase-MiniLM-L3-v2")
+    embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     file_paths  = []
 
     for file in uploaded_files:
