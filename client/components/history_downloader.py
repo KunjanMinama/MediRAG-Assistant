@@ -32,7 +32,7 @@ def render_history_download():
             file_name=f"medirag_chat_{_now()}.txt",
             mime="text/plain",
             use_container_width=True
-        )
+        ) 
 
     with col2:
         st.download_button(

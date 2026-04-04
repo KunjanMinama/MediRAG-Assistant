@@ -1,6 +1,7 @@
-venv
-.venv
-__pycache__
-test.py
-*.env
+.env
+venv/
+__pycache__/
 *.pyc
+uploaded_docs/
+bm25_model.pkl
+*.pkl

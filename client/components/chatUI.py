@@ -123,9 +123,10 @@ def render_chat():
                 st.session_state.messages.append({
                     "role":             "assistant",
                     "content":          answer,
+                    "reranked":         reranked,
                     "timestamp":        bot_time,
                     **msg_data
-                })
+                }) 
 
             else:
                 error = response.json().get("error", response.text)

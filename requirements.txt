@@ -8,10 +8,19 @@ langchain
 langchain-community
 langchain-core
 langchain-groq
+langchain-openai
 
 # Vectorstore
 # Crhromadb
 pinecone
+pinecone-text
+
+sentence-transformers
+openai
+cohere
+ragas
+datasets
+loguru
 
 #Embeddings
 # sentense-transformers
