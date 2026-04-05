@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Form
 from typing import List, Optional
 from module.llm import get_llm_chain
-from module.quer_handler import query_chain
+
 from module.bm25_encoder import load_bm25, encode_query
 from module.reranker import Reranker
 from module.multidoc_chain import run_multidoc_chain, needs_multidoc_reasoning
@@ -31,6 +31,7 @@ class SimpleRetriever(BaseRetriever):
 @router.post("/ask/")
 async def ask_question(question: str = Form(...)):
     try:
+        from module.quer_handler import query_chain
         logger.info(f"User query: {question}")
 
         # Step 1: Setup
