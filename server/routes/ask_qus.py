@@ -37,7 +37,7 @@ async def ask_question(question: str = Form(...)):
         pc    = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
         index = pc.Index(os.environ["PINECONE_INDEX_NAME"])
         embed_model = HuggingFaceEndpointEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2",
-                                                    api_key=os.environ["HUGGINGFACE_API_KEY"])
+                                                    api_key=os.environ["HUGGINGFACE_API_TOKEN"])
 
         logger.debug("Generating dense embedding...")
         dense_vector = embed_model.embed_query(question)
