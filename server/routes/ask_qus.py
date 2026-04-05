@@ -69,7 +69,7 @@ async def ask_question(question: str = Form(...)):
             logger.debug(
                 f"Chunk {i+1} | score: {match['score']:.4f} | "
                 f"page: {match['metadata'].get('page', '')}"
-            )s
+            )
 
         logger.debug("Reranking retrieved chunks...")
         reranker   = Reranker(api_key=os.environ["COHERE_API_KEY"])
