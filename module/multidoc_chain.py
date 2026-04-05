@@ -4,7 +4,6 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from logger import logger
 from langchain_core.prompts import PromptTemplate
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -20,17 +19,17 @@ load_dotenv()
 #             passed to LLM for final comprehensive answer
 #-------------------------------------------------------------------------
 
-def get_llm():
-    """get Huggingface LLM for map-reduce steps"""
 
-    llm=HuggingFaceEndpoint(
+def get_llm():
+    # ✅ Moved here — only loads torch when first request comes in
+    from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
+    llm = HuggingFaceEndpoint(
         repo_id="meta-llama/Llama-3.1-8B-Instruct",
         task="chat-completion",
         max_new_tokens=512,
         huggingfacehub_api_token=os.getenv("HUGGINGFACE_API_TOKEN")
     )
     return ChatHuggingFace(llm=llm)
-
 
 #--------------------------------------------------------------------------
 #MAP STEP: Summarize each document chunk individually to extract relevant info

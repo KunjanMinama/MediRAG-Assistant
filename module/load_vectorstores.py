@@ -1,126 +1,119 @@
+# ✅ CORRECT load_vectorstores.py
 import os
 import time
 from pathlib import Path
 from dotenv import load_dotenv
 from tqdm.auto import tqdm
 from pinecone import Pinecone, ServerlessSpec
-from pinecone_text.sparse import BM25Encoder
-from module.bm25_encoder import encode_documents, fit_and_save_bm25
 from pypdf import PdfReader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
+from pinecone_text.sparse import BM25Encoder
 from logger import logger
+import pickle
 
 load_dotenv()
 
-HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_TOKEN")
-PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
-PINECONE_ENV ="us-east-1"
-PINECONE_INDEX_NAME="meeddiassist"
+PINECONE_API_KEY    = os.getenv("PINECONE_API_KEY")
+PINECONE_ENV        = "us-east-1"
+PINECONE_INDEX_NAME = os.getenv("PINECONE_INDEX_NAME", "meddiassist")
+UPLOAD_DIR          = "./uploaded_docs"
 
-os.environ["HUGGINGFACE_API_TOKEN"]=HUGGINGFACE_API_KEY
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-UPLOAD_DIR="./uploaded_docs"  ##ALl the uploaded PDFs will store here
-os.makedirs(UPLOAD_DIR,exist_ok=True)
-
-# Initialize pinecone
-pc = Pinecone(api_key=PINECONE_API_KEY)
-spec = ServerlessSpec(cloud="aws",region=PINECONE_ENV)
-existing_indexes=[i["name"] for i in pc.list_indexes()]
-
-if PINECONE_INDEX_NAME not in existing_indexes:
-    pc.create_index(
-        name=PINECONE_INDEX_NAME,
-        dimension=384,
-        metric="dotproduct",
-        spec=spec
-
-    )
-while not pc.describe_index(PINECONE_INDEX_NAME).status["ready"]:
-     time.sleep(1)
-
-index=pc.Index(PINECONE_INDEX_NAME)
-
-## Load,split,embeed and upsert pdf docs content
-
+# ✅ NO module level Pinecone connection — everything inside function!
+BATCH_SIZE = 50
 def load_vectorstore(uploaded_files):
-    embed_model=HuggingFaceEmbeddings(
-        model_name="sentence-transformers/paraphrase-MiniLM-L3-v2"
-                                      )
-    file_paths=[]
-    logger.info("Pinecone index ready, starting to process uploaded files")
+    # Init Pinecone INSIDE function only
+    pc   = Pinecone(api_key=PINECONE_API_KEY)
+    spec = ServerlessSpec(cloud="aws", region=PINECONE_ENV)
+    existing_indexes = [i["name"] for i in pc.list_indexes()]
 
-    
-    # 1. upload
+    if PINECONE_INDEX_NAME not in existing_indexes:
+        pc.create_index(
+            name=PINECONE_INDEX_NAME,
+            dimension=384,
+            metric="dotproduct",
+            spec=spec
+        )
+        while not pc.describe_index(PINECONE_INDEX_NAME).status["ready"]:
+            time.sleep(1)
+
+    index       = pc.Index(PINECONE_INDEX_NAME)
+   
+   ## #for multiple user
+  #  namespace = str(uuid.uuid4())[:8]  # unique per upload session
+
+  ##  # upsert with namespace
+   # index.upsert(vectors=[v], namespace=namespace)
+
+    # save namespace so /ask/ can use it
+   # with open("./current_namespace.txt", "w") as f:
+      #  f.write(namespace)
+    embed_model = HuggingFaceEndpointEmbeddings(model="sentence-transformers/all-MiniLM-L6-v2",
+                                               huggingfacehub_api_token=os.environ["HUGGINGFACE_API_TOKEN"])
+    file_paths  = []
+
     for file in uploaded_files:
-        save_path=Path(UPLOAD_DIR)/file.filename
-        with open(save_path,"wb") as f: 
+        save_path = Path(UPLOAD_DIR) / file.filename
+        with open(save_path, "wb") as f:
             f.write(file.file.read())
         file_paths.append(str(save_path))
-        logger.info(f"Saved file: {save_path}")
+        logger.info(f"Saved: {save_path}")
 
-    all_chunks=[]
-    all_texts=[]
-    all_ids=[]
-    all_metadata=[]
+    all_texts    = []
+    all_ids      = []
+    all_metadata = []
 
-    #2. split
     for file_path in file_paths:
-        logger.info(f"Processing: {file_path}")
-
-        reader = PdfReader(file_path)
+        reader   = PdfReader(file_path)
         document = [
-             Document(
-              page_content=page.extract_text() or "",
-              metadata={"source": file_path, "page": i}
-    )
-             for i, page in enumerate(reader.pages)
-]
-        splitter=RecursiveCharacterTextSplitter(chunk_size=1000,chunk_overlap=200)
-        chunks=splitter.split_documents(document)
-        
-         # Collect texts, ids, metadata
+            Document(
+                page_content=page.extract_text() or "",
+                metadata={"source": file_path, "page": i}
+            )
+            for i, page in enumerate(reader.pages)
+        ]
+        splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000, chunk_overlap=100
+        )
+        chunks = splitter.split_documents(document)
         for i, chunk in enumerate(chunks):
-            chunk_id = f"{Path(file_path).stem}-{i}"
-            all_chunks.append(chunk)
             all_texts.append(chunk.page_content)
-            all_ids.append(chunk_id)
+            all_ids.append(f"{Path(file_path).stem}-{i}")
             all_metadata.append({
                 **chunk.metadata,
-                "text": chunk.page_content  # store text for retrieval
+                "text": chunk.page_content
             })
- 
-    logger.info(f"Total chunks to process: {len(all_chunks)}")
 
-    # Generate dense embeddings ────────────────────────────────────
-    logger.info("Generating dense embeddings...")
-    dense_embeddings = embed_model.embed_documents(all_texts)
-    logger.info(f"Dense embeddings generated: {len(dense_embeddings)}")
+    logger.info(f"Total chunks: {len(all_texts)}")
 
-    #  Fit BM25 and generate sparse vectors ─────────────────────────
-    # NEW: fit BM25 on ALL texts so it learns the vocabulary
-    logger.info("Fitting BM25 and generating sparse vectors...")
-    bm25           = fit_and_save_bm25(all_texts)  # learns vocab + IDF scores
-    sparse_vectors = encode_documents(bm25, all_texts)  # learns vocab + IDF, returns sparse vectors
-    logger.info(f"Sparse vectors generated: {len(sparse_vectors)}")
- 
-    # Upsert to Pinecone with BOTH dense + sparse ──────────────────
-    logger.info("Upserting to Pinecone with hybrid vectors...")
- 
+    dense = []
+    for i in range(0, len(all_texts), BATCH_SIZE):
+        batch = all_texts[i:i+BATCH_SIZE]
+        logger.info(f"Embedding batch {i//BATCH_SIZE + 1}...")
+        dense.extend(embed_model.embed_documents(batch))
+
+    bm25 = BM25Encoder.default()
+    bm25.fit(all_texts)
+    with open("./bm25_model.pkl", "wb") as f:
+        pickle.dump(bm25, f)
+    sparse = bm25.encode_documents(all_texts)
+
     vectors = [
         {
-            "id":           all_ids[i],
-            "values":       dense_embeddings[i],      # dense vector
-            "sparse_values": sparse_vectors[i],        # sparse vector ← NEW
-            "metadata":     all_metadata[i]
+            "id":            all_ids[i],
+            "values":        dense[i],
+            "sparse_values": sparse[i],
+            "metadata":      all_metadata[i]
         }
-        for i in range(len(all_chunks))
+        for i in range(len(all_texts))
     ]
- 
-    with tqdm(total=len(vectors), desc="Upserting to Pinecone") as progress:
-        for v in vectors:
-            index.upsert(vectors=[v])
-            progress.update(1)
- 
-    logger.info(f"Upload complete! {len(vectors)} vectors upserted.")
+
+    for i in range(0, len(vectors), BATCH_SIZE):
+        batch = vectors[i:i+BATCH_SIZE]
+        index.upsert(vectors=batch)
+        logger.info(f"Upserted batch {i//BATCH_SIZE + 1}/{(len(vectors)//BATCH_SIZE)+1}")
+
+    logger.info(f"Done! {len(vectors)} vectors upserted.")

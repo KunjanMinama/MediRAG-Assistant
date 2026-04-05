@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Form
 from fastapi.responses import JSONResponse
-from module.evaluator import run_ragas_evaluation
+
 from logger import logger
 import json
 import math
@@ -47,6 +47,7 @@ async def evaluate_response(
     RAGAS scores for all 4 metrics + overall score
     """
     try:
+        from module.evaluator import run_ragas_evaluation
         logger.info(f"Evaluation request for question: '{question[:60]}...'")
 
         # ── Parse contexts ────────────────────────────────────────
