@@ -29,14 +29,15 @@ async def ask_question(question: str = Form(...)):
         from module.reranker import Reranker
         from module.multidoc_chain import run_multidoc_chain, needs_multidoc_reasoning
         from module.quer_handler import query_chain
-        from langchain_huggingface import HuggingFaceEmbeddings
+        from langchain_huggingface import HuggingFaceEndpointEmbeddings
         from pinecone import Pinecone
 
         logger.info(f"User query: {question}")
 
         pc    = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
         index = pc.Index(os.environ["PINECONE_INDEX_NAME"])
-        embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+        embed_model = HuggingFaceEndpointEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2",
+                                                    api_key=os.environ["HUGGINGFACE_API_KEY"])
 
         logger.debug("Generating dense embedding...")
         dense_vector = embed_model.embed_query(question)
@@ -68,7 +69,7 @@ async def ask_question(question: str = Form(...)):
             logger.debug(
                 f"Chunk {i+1} | score: {match['score']:.4f} | "
                 f"page: {match['metadata'].get('page', '')}"
-            )
+            )s
 
         logger.debug("Reranking retrieved chunks...")
         reranker   = Reranker(api_key=os.environ["COHERE_API_KEY"])
