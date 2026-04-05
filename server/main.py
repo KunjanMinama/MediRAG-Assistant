@@ -1,4 +1,14 @@
-# ✅ Don't import heavy modules at top level
+import nltk
+import os
+
+# ✅ Download to a path that persists at runtime
+nltk.download('punkt_tab', download_dir='/opt/render/nltk_data')
+nltk.download('averaged_perceptron_tagger_eng', download_dir='/opt/render/nltk_data')
+nltk.download('stopwords', download_dir='/opt/render/nltk_data')  # often needed too
+
+import logging
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger(__name__)
 # They will be imported only when routes are called
 import logging
 logging.basicConfig(level=logging.DEBUG)

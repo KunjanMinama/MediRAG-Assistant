@@ -1,3 +1,4 @@
+
 import os
 from dotenv import load_dotenv
 from langchain_core.prompts import PromptTemplate
@@ -78,4 +79,3 @@ def get_llm_chain(retriever):
     return rag_chain
     
  
-

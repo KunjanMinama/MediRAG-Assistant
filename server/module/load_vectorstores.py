@@ -8,7 +8,7 @@ from pinecone import Pinecone, ServerlessSpec
 from pypdf import PdfReader
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from pinecone_text.sparse import BM25Encoder
 from logger import logger
 import pickle
@@ -23,7 +23,7 @@ UPLOAD_DIR          = "./uploaded_docs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ✅ NO module level Pinecone connection — everything inside function!
-
+BATCH_SIZE = 50
 def load_vectorstore(uploaded_files):
     # Init Pinecone INSIDE function only
     pc   = Pinecone(api_key=PINECONE_API_KEY)
@@ -41,7 +41,18 @@ def load_vectorstore(uploaded_files):
             time.sleep(1)
 
     index       = pc.Index(PINECONE_INDEX_NAME)
-    embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+   
+   ## #for multiple user
+  #  namespace = str(uuid.uuid4())[:8]  # unique per upload session
+
+  ##  # upsert with namespace
+   # index.upsert(vectors=[v], namespace=namespace)
+
+    # save namespace so /ask/ can use it
+   # with open("./current_namespace.txt", "w") as f:
+      #  f.write(namespace)
+    embed_model = HuggingFaceEndpointEmbeddings(model="sentence-transformers/all-MiniLM-L6-v2",
+                                               huggingfacehub_api_token=os.environ["HUGGINGFACE_API_TOKEN"])
     file_paths  = []
 
     for file in uploaded_files:
@@ -65,7 +76,7 @@ def load_vectorstore(uploaded_files):
             for i, page in enumerate(reader.pages)
         ]
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=200
+            chunk_size=1000, chunk_overlap=100
         )
         chunks = splitter.split_documents(document)
         for i, chunk in enumerate(chunks):
@@ -78,7 +89,11 @@ def load_vectorstore(uploaded_files):
 
     logger.info(f"Total chunks: {len(all_texts)}")
 
-    dense = embed_model.embed_documents(all_texts)
+    dense = []
+    for i in range(0, len(all_texts), BATCH_SIZE):
+        batch = all_texts[i:i+BATCH_SIZE]
+        logger.info(f"Embedding batch {i//BATCH_SIZE + 1}...")
+        dense.extend(embed_model.embed_documents(batch))
 
     bm25 = BM25Encoder.default()
     bm25.fit(all_texts)
@@ -96,9 +111,9 @@ def load_vectorstore(uploaded_files):
         for i in range(len(all_texts))
     ]
 
-    with tqdm(total=len(vectors), desc="Upserting") as p:
-        for v in vectors:
-            index.upsert(vectors=[v])
-            p.update(1)
+    for i in range(0, len(vectors), BATCH_SIZE):
+        batch = vectors[i:i+BATCH_SIZE]
+        index.upsert(vectors=batch)
+        logger.info(f"Upserted batch {i//BATCH_SIZE + 1}/{(len(vectors)//BATCH_SIZE)+1}")
 
     logger.info(f"Done! {len(vectors)} vectors upserted.")
