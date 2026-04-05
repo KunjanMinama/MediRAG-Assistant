@@ -1,24 +1,20 @@
-from langchain_core.prompts import PromptTemplate
-from langchain_core.runnables import RunnablePassthrough
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 import os
 from dotenv import load_dotenv
+from langchain_core.prompts import PromptTemplate
+from langchain_core.runnables import RunnablePassthrough
 
 load_dotenv()
 
-
-
 def get_llm_chain(retriever):
-    
-# Create LLM properly
+    # ✅ Moved here
+    from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
+
     llm = HuggingFaceEndpoint(
         repo_id="meta-llama/Llama-3.1-8B-Instruct",
         task="chat-completion",
         max_new_tokens=256,
         huggingfacehub_api_token=os.getenv("HUGGINGFACE_API_TOKEN")
-        )
+    )
 
     # Pass llm to ChatHuggingFace
     model = ChatHuggingFace(llm=llm)

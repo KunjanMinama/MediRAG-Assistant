@@ -1,14 +1,7 @@
 from fastapi import APIRouter, Form
-from typing import List, Optional
-from module.llm import get_llm_chain
-
-from module.bm25_encoder import load_bm25, encode_query
-from module.reranker import Reranker
-from module.multidoc_chain import run_multidoc_chain, needs_multidoc_reasoning
+from typing import List
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
-from langchain_huggingface import HuggingFaceEmbeddings
-from pinecone import Pinecone
 from pydantic import Field
 from fastapi.responses import JSONResponse
 from logger import logger
@@ -16,8 +9,7 @@ import os
 
 router = APIRouter()
 
-
-HYBRID_ALPHA = 0.5  # 0.5 = equal dense + sparse balance
+HYBRID_ALPHA = 0.5
 TOP_K = 10
 TOP_N = 5
 
@@ -31,24 +23,28 @@ class SimpleRetriever(BaseRetriever):
 @router.post("/ask/")
 async def ask_question(question: str = Form(...)):
     try:
+        # ✅ All heavy imports moved here
+        from module.llm import get_llm_chain
+        from module.bm25_encoder import load_bm25, encode_query
+        from module.reranker import Reranker
+        from module.multidoc_chain import run_multidoc_chain, needs_multidoc_reasoning
         from module.quer_handler import query_chain
+        from langchain_huggingface import HuggingFaceEmbeddings
+        from pinecone import Pinecone
+
         logger.info(f"User query: {question}")
 
-        # Step 1: Setup
         pc    = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
         index = pc.Index(os.environ["PINECONE_INDEX_NAME"])
         embed_model = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
 
-        # Step 2: Dense embedding
         logger.debug("Generating dense embedding...")
         dense_vector = embed_model.embed_query(question)
 
-        # Step 3: Sparse BM25 vector
         logger.debug("Generating sparse BM25 vector...")
         bm25          = load_bm25()
         sparse_vector = encode_query(bm25, question)
 
-        # Step 4: Hybrid search in Pinecone
         logger.debug(f"Hybrid search alpha={HYBRID_ALPHA}...")
         res = index.query(
             vector=dense_vector,
@@ -60,75 +56,53 @@ async def ask_question(question: str = Form(...)):
 
         logger.info(f"Retrieved {len(res['matches'])} chunks")
 
-        # Step 5: Build documents
         docs = [
             Document(
                 page_content=match["metadata"].get("text", ""),
                 metadata=match["metadata"]
             )
             for match in res["matches"]
-
         ]
 
-         # Log retrieval scores
         for i, match in enumerate(res["matches"]):
             logger.debug(
                 f"Chunk {i+1} | score: {match['score']:.4f} | "
                 f"page: {match['metadata'].get('page', '')}"
             )
 
-        # Step 5.1: Rerank documents
         logger.debug("Reranking retrieved chunks...")
-        reranker = Reranker(api_key=os.environ["COHERE_API_KEY"])
-        docs_texts=[doc.page_content for doc in docs]
-        reranked = reranker.rerank(question, docs_texts, top_k=TOP_N)
+        reranker   = Reranker(api_key=os.environ["COHERE_API_KEY"])
+        docs_texts = [doc.page_content for doc in docs]
+        reranked   = reranker.rerank(question, docs_texts, top_k=TOP_N)
 
-        #Rebuild Document object from reranked results 
-
-        # Preserve original metadata including source
         reranked_docs = []
         for r in reranked:
             original_doc = next(
-                 (doc for doc in docs if doc.page_content == r["text"]),
-                 None
+                (doc for doc in docs if doc.page_content == r["text"]), None
             )
             reranked_docs.append(
-                 Document(
-                     page_content=r["text"],
-                     metadata={
-                       **(original_doc.metadata if original_doc else {}),
+                Document(
+                    page_content=r["text"],
+                    metadata={
+                        **(original_doc.metadata if original_doc else {}),
                         "rerank_score": r["score"]
-            }
-        )
-    )
-        logger.info(f"Reranker selected {len(reranked_docs)} Chunks. ")
+                    }
+                )
+            )
 
-        ##Step 6: Decide reasoning type
-        #if chunk come  from the multiple documents -> MAP-Resuce
-        #if chunk come from the single document -> simple RAG
+        logger.info(f"Reranker selected {len(reranked_docs)} chunks.")
+
         if needs_multidoc_reasoning(reranked_docs):
             logger.info("Multiple sources detected - using MAP-Reduce chain")
-
-            result=run_multidoc_chain(reranked_docs, question)
-
-            return {
-                "response":         result["response"],
-                
-            }
- 
+            result = run_multidoc_chain(reranked_docs, question)
+            return {"response": result["response"]}
         else:
             logger.info("Single source detected — using simple RAG chain")
+            retriever = SimpleRetriever(docs=reranked_docs)
+            chain     = get_llm_chain(retriever)
+            result    = query_chain(chain, question)
+            return {"response": result["response"]}
 
-            #Simple RAG pipeline
-            retriever = SimpleRetriever(docs=reranked_docs)  
-            chain = get_llm_chain(retriever)
-            result = query_chain(chain, question)
-
-            return {
-                "response":         result["response"],
-               
-              }
- 
     except FileNotFoundError as e:
         logger.warning(f"BM25 not found: {e}")
         return JSONResponse(
@@ -137,7 +111,4 @@ async def ask_question(question: str = Form(...)):
         )
     except Exception as e:
         logger.exception("Error processing question")
-        return JSONResponse(
-            status_code=500,
-            content={"error": str(e)}
-        )
+        return JSONResponse(status_code=500, content={"error": str(e)})
