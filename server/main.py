@@ -34,6 +34,9 @@ log.info("✅ ask_router imported")
 from routes.evaluate import router as evaluate_router
 log.info("✅ evaluate_router imported")
 
+from routes.clear_index import router as clear_index
+log.info("✅ clear_index_router imported")
+
 log.info("=== ALL IMPORTS DONE ===")
 
 app = FastAPI(title="MediRAG Advanced API")
@@ -51,6 +54,7 @@ app.middleware("http")(catch_exception_middleware)
 app.include_router(upload_router)
 app.include_router(ask_router)
 app.include_router(evaluate_router)
+app.include_router(clear_index)
 
 @app.get("/")
 def health_check():
@@ -85,6 +89,7 @@ async def startup():
     app.include_router(upload_router)
     app.include_router(ask_router)
     app.include_router(evaluate_router)
+    app.include_router(clear_index)
 
 @app.get("/")
 def health_check():

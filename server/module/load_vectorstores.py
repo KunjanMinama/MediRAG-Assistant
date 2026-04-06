@@ -1,4 +1,4 @@
-# ✅ CORRECT load_vectorstores.py
+#  CORRECT load_vectorstores.py
 import os
 import time
 from pathlib import Path
@@ -22,7 +22,7 @@ UPLOAD_DIR          = "./uploaded_docs"
 
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-# ✅ NO module level Pinecone connection — everything inside function!
+#  NO module level Pinecone connection — everything inside function!
 BATCH_SIZE = 50
 def load_vectorstore(uploaded_files):
     # Init Pinecone INSIDE function only
@@ -68,24 +68,31 @@ def load_vectorstore(uploaded_files):
 
     for file_path in file_paths:
         reader   = PdfReader(file_path)
-        document = [
-            Document(
-                page_content=page.extract_text() or "",
-                metadata={"source": file_path, "page": i}
-            )
-            for i, page in enumerate(reader.pages)
-        ]
+        patient_name = Path(file_path).stem
+        full_text = ""
+        for page in reader.pages:
+            full_text += page.extract_text() or ""
+
+    #  Chunk the FULL document, not page by page
         splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000, chunk_overlap=100
-        )
-        chunks = splitter.split_documents(document)
+            chunk_size=500, chunk_overlap=50
+    )
+        chunks = splitter.create_documents(
+             texts=[full_text],
+             metadatas=[{
+              "source": file_path,
+               "patient_file": patient_name,  # same for ALL chunks from this file
+               "total_pages": len(reader.pages)
+        }]
+    )
+    
         for i, chunk in enumerate(chunks):
-            all_texts.append(chunk.page_content)
-            all_ids.append(f"{Path(file_path).stem}-{i}")
-            all_metadata.append({
-                **chunk.metadata,
-                "text": chunk.page_content
-            })
+             all_texts.append(chunk.page_content)
+             all_ids.append(f"{patient_name}-{i}")
+             all_metadata.append({
+              **chunk.metadata,
+                 "text": chunk.page_content
+        })
 
     logger.info(f"Total chunks: {len(all_texts)}")
 

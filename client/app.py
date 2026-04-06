@@ -4,6 +4,8 @@ from components.upload import render_uploader
 from components.history_downloader import render_history_download
 from components.ragas_dashboard import render_ragas_dashboard  # ← ADD THIS
 
+
+API_URL="https://kunjan174-medirag-backend.hf.space"
 # ─── Page Config ─────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="AI Medical Assistant",
@@ -108,6 +110,22 @@ with st.sidebar:
     """, unsafe_allow_html=True)
 
     render_uploader()
+
+    st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
+    st.markdown("#### 🗑️ Clear Data")
+    if st.button("Clear All Documents", use_container_width=True):
+        try:
+            import requests
+            res = requests.post(f"{API_URL}/clear_index/")
+            if res.status_code == 200:
+                st.session_state.messages = []
+                st.session_state.docs_uploaded = False
+                st.session_state.ragas_history = []
+                st.success("✅ All documents cleared! Ready for new upload.")
+            else:
+                st.error("Failed to clear index.")
+        except Exception as e:
+            st.error(f"Error: {e}")    
 
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
     render_history_download()
